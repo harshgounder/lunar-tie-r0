@@ -81,6 +81,51 @@ def normalize_pair(imgA, imgB, sigma=8.0):
     return normalize_ratio(imgA, sigma=sigma), normalize_ratio(imgB, sigma=sigma)
 
 
+def quantize(img, quant_levels=6):
+    """Uniform min-max quantization into integer rank bins, float64.
+
+    Min-max scales the image to [0, quant_levels - 1] and floors each
+    value to its bin index. The bins are computed after min-max scaling
+    because the min-max affine map is invariant to positive gain and
+    offset (a*img + b with a > 0), so the bin index is a stable
+    intensity rank under multiplier gain, which is exactly what the
+    RIFT-style rank transform needs. A fixed [0, 255] grid would break
+    under gain. Constant images map to all zeros. Output is float64,
+    same shape as the input.
+    """
+    L = np.asarray(img, dtype=np.float64)
+    if L.ndim != 2:
+        raise ValueError("img must be a 2D array")
+    if quant_levels < 2:
+        raise ValueError("quant_levels must be >= 2")
+    lo = float(L.min())
+    hi = float(L.max())
+    if hi <= lo:
+        return np.zeros(L.shape, dtype=np.float64)
+    scaled = (L - lo) / (hi - lo) * (quant_levels - 1)
+    bins = np.floor(scaled)
+    np.clip(bins, 0.0, float(quant_levels) - 1.0, out=bins)
+    return bins
+
+
+def rank_transform(img, bins=6):
+    """RIFT-style rank-transform normalizer (UNIT-4B).
+
+    Per-pixel stable intensity rank: the image is min-max scaled and
+    uniformly quantized into `bins` levels, the rank half of the
+    RIFT2 rank/phase idea. Positive gain and offset map every pixel to
+    the same rank, so matches survive radiometric distortion that
+    breaks ratio-norm. Returns float64, same shape as the input, with
+    values in [0, bins - 1].
+    """
+    return quantize(img, quant_levels=bins)
+
+
+def apply_rank(img, quantize_bins=6):
+    """Apply the rank transform with the ticket's argument spelling."""
+    return rank_transform(img, bins=quantize_bins)
+
+
 def correlation_preview(nA, nB):
     """Zero-mean normalized cross-correlation of two full images (float).
 
