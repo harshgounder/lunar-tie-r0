@@ -86,7 +86,7 @@ Expected: `119 passed`.
 ```
 
 Each box maps 1:1 onto a unit in the parent decomposition
-(sih-2026/research/DECOMPOSITION-FINE.md, 97 units). The panels emitted at the
+(sih-2026/research/DECOMPOSITION-FINE.md, 114 units). The panels emitted at the
 end are already shaped as monster-zoo ledger rows (see zoo/schema.json): every
 metric run is a candidate entry in the condition-indexed router that
 milestone-3 wires up.
@@ -109,7 +109,7 @@ milestone-3 wires up.
 
 ## context: the campaign this belongs to
 
-- full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 221-file audited corpus, decomposition into 97 single-topic units, 16-wave deep-research layer, factor atlas
+- full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 221-file audited corpus, decomposition into 114 single-topic units, 16-wave deep-research layer, factor atlas
 - build plan of record: `docs/BRIEF-MILESTONE-1-R0-SPINE.md` in that repo
 - monster-hunt + zoo-router architecture: `research/MONSTER-*.md`
 - the "11 units in one day" was made possible by: opencode (coding agent) by: opencode (coding agent)
