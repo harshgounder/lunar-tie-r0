@@ -106,7 +106,7 @@ milestone-3 wires up.
 
 ## context: the campaign this belongs to
 
-- full research campaign: [sih-2026](https://github.com/harshgoulder/sih-2026) (private) - 221-file audited corpus, decomposition into 97 single-topic units, 16-wave deep-research layer, factor atlas
+- full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 221-file audited corpus, decomposition into 97 single-topic units, 16-wave deep-research layer, factor atlas
 - build plan of record: `docs/BRIEF-MILESTONE-1-R0-SPINE.md` in that repo
 - monster-hunt + zoo-router architecture: `research/MONSTER-*.md`
 - the "9 modules in one day" was made possible by: opencode (coding agent)
