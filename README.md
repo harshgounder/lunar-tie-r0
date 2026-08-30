@@ -6,7 +6,7 @@ lunar imagery to sub-pixel accuracy. This repo is milestone 1: the complete
 classical pipeline spine, engineered gate-first, with an adversarial
 verification battery fired at every unit.
 
-[![tests](https://img.shields.io/badge/tests-108%2F108-brightgreen)]() [![modules](https://img.shields.io/badge/modules-9-blue)()] [![zero Ch-2 inputs](https://img.shields.io/badge/Ch--2%20inputs-zero-orange)]() [![phase](https://img.shields.io/badge/milestone-1%20of%206-lightgrey)]()
+[![tests](https://img.shields.io/badge/tests-119%2F119-brightgreen)]() [![modules](https://img.shields.io/badge/modules-9-blue)()] [![zero Ch-2 inputs](https://img.shields.io/badge/Ch--2%20inputs-zero-orange)]() [![phase](https://img.shields.io/badge/milestone-1%20of%206-lightgrey)]()
 
 ## the problem, in 3 sentences
 
@@ -40,7 +40,7 @@ behind a passing suite), and 2 overclaims in my own tickets. Nothing was
 rubber-stamped. See LIE-CHECK-PROTOCOL.md in the parent campaign repo for the
 full battery spec.
 
-## the 9 modules (all green, 108/108 tests)
+## the modules (all green, 119/119 tests)
 
 | # | module | what it does | gate | commit |
 |---|--------|--------------|------|--------|
@@ -54,6 +54,9 @@ full battery spec.
 | 7 | `subpixel.py` | phase-correlation subpixel (Hann window, upsampled DFT peak, parabola refine) + ECC-ready footprint validity | known-shift recovery + 8 adversarial: PASS | `09f1fb6` |
 | 8 | `coverage.py` | coverage gates (occupancy/entropy/quadrants/NN-CV) + 2-round ANMS uniform selection | clustered-vs-uniform metrics on 3 fixtures + 8 adversarial: PASS | `8b4a1d0` |
 | 9 | `conformal.py` | conformal ACCEPT / REJECT / ABSTAIN gates with per-stratum q-hat + tier-stamped metrics panel | split-conformal coverage 0.956 fresh + 8 adversarial: PASS | `4a035a2` |
+| 4B | `photometric.py` (add) | RIFT-style rank transform, exact gain invariance (mismatch 0.000000) | 5 tests: PASS (bundled w/ MG2) | `5016273` |
+| - | MINI-GATE-2 | full M1 chain on similarity pair | s=1.2001 theta=0.2000 exact, 64.9% inliers, rms 0.146px, occupancy 48.4%: PASS | `5016273` |
+| 10 | `pipeline.py` | CLI driver: 10-step chain, artifacts (panel/ties/summary), N9 tier-0+UNLABELED default, loud errors | 6/6 gate + cleanroom tie delta (4.031, 3.031) vs truth (4, 3): PASS | `5a5f6e1` |
 
 Run it yourself:
 
@@ -65,7 +68,7 @@ uv pip install pytest numpy
 .venv/bin/pytest tests/ -q
 ```
 
-Expected: `108 passed`.
+Expected: `119 passed`.
 
 ## architecture: the pipeline spine
 
@@ -109,7 +112,7 @@ milestone-3 wires up.
 - full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 221-file audited corpus, decomposition into 97 single-topic units, 16-wave deep-research layer, factor atlas
 - build plan of record: `docs/BRIEF-MILESTONE-1-R0-SPINE.md` in that repo
 - monster-hunt + zoo-router architecture: `research/MONSTER-*.md`
-- the "9 modules in one day" was made possible by: opencode (coding agent)
+- the "11 units in one day" was made possible by: opencode (coding agent) by: opencode (coding agent)
   writing 100% of the source, a Hermes-orchestrated gate loop doing 100% of
   the verification, and an aggressive lie-hunt protocol catching defects the
   green test-suites alone would never surface.
