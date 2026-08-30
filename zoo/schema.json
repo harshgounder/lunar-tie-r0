@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Monster Zoo Ledger Row",
+  "type": "object",
+  "required": ["stratum_key", "config", "gate_evidence", "truth_tier", "date", "provenance_hash"],
+  "properties": {
+    "stratum_key": {
+      "type": "object",
+      "description": "D16.1 condition fingerprint bins",
+      "required": ["sun_elev_bin", "azim_delta_bin", "shadow_frac_class", "gsd_ratio_bin", "terrain_class"],
+      "properties": {
+        "sun_elev_bin": {"type": "string"},
+        "azim_delta_bin": {"type": "string"},
+        "shadow_frac_class": {"type": "string"},
+        "gsd_ratio_bin": {"type": "string"},
+        "terrain_class": {"enum": ["mare", "highland", "mixed"]},
+        "sensor_stratum": {"type": "string", "description": "TDI/bit/exposure per D2.4"},
+        "rock_abundance_quintile": {"type": ["integer", "null"], "description": "Diviner GDR_L3 quintile, the unprecedented stratum"}
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": ["matcher", "normalization", "consensus", "thresholds"],
+      "properties": {
+        "matcher": {"type": "string"},
+        "normalization": {"type": "string", "description": "P3.m1 ratio-arch variant id"},
+        "consensus": {"type": "string", "description": "e.g. MAGSAC++ GSD-normalized"},
+        "thresholds": {"type": "object"}
+      }
+    },
+    "gate_evidence": {
+      "type": "object",
+      "required": ["fold_ids", "rmse_px", "inlier_ratio", "ece"],
+      "properties": {
+        "fold_ids": {"type": "array", "items": {"type": "string"}},
+        "rmse_px": {"type": "number"},
+        "inlier_ratio": {"type": "number"},
+        "ece": {"type": "number"}
+      }
+    },
+    "truth_tier": {"enum": [1, 2, 3, 4, 5], "description": "D11 4-tier ladder + cross-track tier 5"},
+    "date": {"type": "string", "format": "date"},
+    "provenance_hash": {"type": "string"},
+    "monster_name": {"type": "string", "description": "human-readable; monster #0 = r0-classical"}
+  }
+}
