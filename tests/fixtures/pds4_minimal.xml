@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Product_Observational xmlns="http://pds.nasa.gov/pds4/pds/v1">
+  <Identification_Area>
+    <logical_identifier>urn:isro:ch2:tmc2:data:demo</logical_identifier>
+  </Identification_Area>
+  <File_Area_Observational>
+    <File>
+      <file_name>ch2_tmc_f_20260901T0000000000_1_c.dmp</file_name>
+    </File>
+    <Array_2D_Image>
+      <data_type>UnsignedLSB2</data_type>
+      <Axis_Array>
+        <axis_name>Line</axis_name>
+        <elements>7</elements>
+      </Axis_Array>
+      <Axis_Array>
+        <axis_name>Sample</axis_name>
+        <elements>5</elements>
+      </Axis_Array>
+    </Array_2D_Image>
+  </File_Area_Observational>
+  <File_Area_Misc>
+    <File>
+      <file_name>ch2_tmc_oat_20260901T0000000000_1_c.000</file_name>
+    </File>
+    <File>
+      <file_name>ch2_tmc_spm_20260901T0000000000_1_c.000</file_name>
+    </File>
+  </File_Area_Misc>
+</Product_Observational>
