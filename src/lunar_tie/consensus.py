@@ -81,12 +81,14 @@ def magsac_consensus(src_pts, dst_pts, min_samples=2, iters=500,
     """RANSAC-style consensus with a similarity model.
 
     Randomized minimal sets of 2 matched pairs; each hypothesis is scored by
-    the count of residuals below a soft sigma (MAGSAC-flavored sigma
-    marginalization: sigma_max = sigma_thr * median residual, so a good model
-    tolerates a soft threshold rather than a hard 0). The best inlier set is
-    then polished by refitting on all inliers (2 rounds or until the set stops
-    changing). Returns a dict with M, inliers, inlier_ratio, sigma_max and
-    residuals.
+    a HARD residual gate: the inlier count of res < sigma_thr (px). The
+    reported sigma_max is the constant sigma_thr itself, NOT a sigma
+    marginalization over the median residual: no soft threshold or
+    probabilistic weighting is applied (the MAGSAC flavor is the
+    hypothesis-then-refit loop, not the sigma integral). The best inlier set
+    is then polished by refitting on all inliers (2 rounds or until the set
+    stops changing). Returns a dict with M, inliers, inlier_ratio,
+    sigma_max and residuals.
     """
     src = np.asarray(src_pts, dtype=np.float64)
     dst = np.asarray(dst_pts, dtype=np.float64)
@@ -160,6 +162,11 @@ def fit_homography(src_pts, dst_pts):
 
     Exposed as an OPTION for tier-4 eval; similarity remains the default
     verdict model for R0 (lunar DEM relief makes pure-H globally wrong).
+
+    Degenerate geometry (null vector with a ~zero last component, or a
+    non-finite result) raises ValueError loudly instead of returning
+    inf/nan junk from the H[2,2] normalization, mirroring fit_similarity's
+    policy.
     """
     src = np.asarray(src_pts, dtype=np.float64)
     dst = np.asarray(dst_pts, dtype=np.float64)
@@ -174,4 +181,10 @@ def fit_homography(src_pts, dst_pts):
         A[2 * i + 1] = [0.0, 0.0, 0.0, x, y, 1.0, -v * x, -v * y, -v]
     _, _, Vt = np.linalg.svd(A)
     H = Vt[-1].reshape(3, 3)
-    return H / H[2, 2]
+    if abs(H[2, 2]) < 1e-12:
+        raise ValueError(
+            "degenerate homography: null vector has ~zero H[2,2]")
+    H = H / H[2, 2]
+    if not np.isfinite(H).all():
+        raise ValueError("degenerate fit produced non-finite homography")
+    return H

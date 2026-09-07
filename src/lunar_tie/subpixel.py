@@ -20,8 +20,11 @@ i.e. dst_pts + delta.
 Pure numpy + stdlib. No cv2, no scipy, no skimage. Self-contained; reuses no
 other module internals beyond numpy.
 
-Ambiguity policy: a patch whose window lies fully outside the image marks that
-pair valid=False without crashing; the refined position is left at the input
+Ambiguity policy: a patch window that would exit the image marks that pair
+valid=False without crashing (refine_matches requires the FULL half-margin
+window to fit: any point within half px of the border is invalid, even
+though extract_patch could reflect-pad it; the stricter rule avoids
+reflection-correlated patches). The refined position is left at the input
 dst and the delta is zero.
 """
 
@@ -139,8 +142,10 @@ def refine_matches(imgA, imgB, src_pts, dst_pts, half=16, upsample=16,
     Returns a dict with 'src' (fractional refined source, unchanged), 'dst'
     (refined positions = dst_pts + delta), 'deltas' (N,2) applied shifts,
     'peak_vals' (N,) confidences, and 'valid' (N,) bool mask where
-    |delta| <= max_phase and peak_val >= 0.2. A pair whose patch window lies
-    fully outside the image is marked invalid without crashing.
+    |delta| <= max_phase and peak_val >= 0.2. Edge rule (stricter than
+    extract_patch's reflection capability): a point whose half-margin
+    window does not fully fit inside the image (within half px of any
+    border) is marked invalid with delta zero, without crashing.
     """
     src = np.asarray(src_pts, dtype=np.float64)
     dst = np.asarray(dst_pts, dtype=np.float64)

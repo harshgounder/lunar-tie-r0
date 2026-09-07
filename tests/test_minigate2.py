@@ -21,7 +21,7 @@ from lunar_tie.conformal import conformal_calibrate, conformal_gate, metrics_pan
 
 def main():
     t0 = time.time()
-    print('[1] synthetic pair (truth: similarity s=1.15 theta=0.2rad t=(9,-5)) + gain/offset...')
+    print('[1] synthetic pair (truth: similarity s=1.2 theta=0.2rad t=(9,10.5)) + gain/offset...')
     W = H = 1024
     rng = np.random.default_rng(100)
     # denser structured texture: many small bright "rocks" + gaussian blobs,

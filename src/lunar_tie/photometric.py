@@ -10,11 +10,13 @@ local Gaussian window.
 
 numpy + stdlib only. No scipy, no cv2.
 
-Memory discipline invariant: gaussian_blur allocates at most two full-size
-temporaries (the reflect-padded array and one work buffer). The separable
-row-then-column passes reuse those buffers, so peak memory is O(img.size)
-with a constant factor of two. normalize_ratio builds on that and never holds
-more than a small constant number of full-size arrays at once.
+Memory discipline: gaussian_blur holds the factor-of-two claim exactly
+(it allocates the reflect-padded array plus one work buffer, and the two
+separable passes reuse them, so peak memory is O(img.size) with constant
+factor two). normalize_ratio builds on it but holds MORE full-size arrays
+at its peak (L, mu, L2, mu2, num, var, den, out: about eight float64
+arrays before the float32 cast), so its constant is larger; it is still
+O(img.size), just not the factor-of-two invariant of gaussian_blur.
 
 Edge handling: reflect padding at image borders (np.pad mode 'symmetric').
 Reflection avoids injecting artificial high-frequency energy at the border

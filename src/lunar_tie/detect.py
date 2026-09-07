@@ -295,10 +295,17 @@ def detect_keypoints_rdsift(img, n_octaves=4, n_scales=3, sigma0=1.6,
 
 
 def match_descriptors(descA, descB, ratio=0.8):
-    """Lowe ratio test on L2 distance. Returns [(i, j), ...] matches."""
+    """Lowe ratio test on L2 distance. Returns [(i, j), ...] matches.
+
+    Empty-safe contract: input with fewer than 2 descriptors on either
+    side returns [] (the ratio test needs a nearest + second-nearest pair,
+    which a single-candidate side cannot provide).
+    """
     descA = np.asarray(descA, dtype=np.float64)
     descB = np.asarray(descB, dtype=np.float64)
     if descA.shape[0] == 0 or descB.shape[0] == 0:
+        return []
+    if descA.shape[0] < 2 or descB.shape[0] < 2:
         return []
     if descA.shape[1] != descB.shape[1]:
         raise ValueError("descriptor matrices must have the same width")

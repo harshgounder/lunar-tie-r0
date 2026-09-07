@@ -10,7 +10,8 @@ Pure numpy + stdlib. No cv2, no scipy, no skimage.
 
 Ambiguity policy: an empty scores_test returns an empty labels array without
 crashing; conformal_calibrate raises ValueError on empty or non-finite input;
-metrics_panel raises ValueError when tier_label is not one of {1,2,3,4,5}.
+metrics_panel raises ValueError when tier_label is not one of {0,1,2,3,4,5}
+(0 = the N9 UNLABELED honesty tier).
 """
 
 import datetime
@@ -41,6 +42,12 @@ def conformal_calibrate(residuals_cal, alpha=0.05):
     q_hat is the k-th order statistic with k = ceil((n+1)(1-alpha)), the
     finite-sample exact split-conformal quantile. residuals_cal are error px
     of held-out ties. Raises ValueError if empty or non-finite.
+
+    Small-n behavior (exactness): when k > n the exact order statistic does
+    not exist, so q_hat = +inf is returned. Coverage >= 1 - alpha then holds
+    trivially and a downstream gate accepts everything: the honest
+    conservative reading of a too-small calibration set. A finite q_hat is
+    returned only when k <= n.
     """
     residuals_cal = np.asarray(residuals_cal, dtype=np.float64)
     if residuals_cal.size == 0:
@@ -49,7 +56,8 @@ def conformal_calibrate(residuals_cal, alpha=0.05):
         raise ValueError("residuals_cal contains non-finite values")
     n = residuals_cal.size
     k = int(np.ceil((n + 1) * (1.0 - alpha)))
-    k = min(k, n)
+    if k > n:
+        return float("inf")
     sorted_r = np.sort(residuals_cal)
     return float(sorted_r[k - 1])
 
@@ -58,11 +66,16 @@ def conformal_gate(scores_test, q_hat, sigma_thr=None):
     """Binary ACCEPT/REJECT gate on test scores.
 
     ACCEPT iff score <= q_hat (and <= sigma_thr when provided); else REJECT.
-    Empty scores_test returns an empty labels array.
+    Empty scores_test returns an empty labels array. scores_test with any
+    non-finite value raises ValueError (one loud policy, shared with
+    conformal_calibrate); NaN never compares <= q_hat, so a silent NaN pass
+    would be REJECT laundering, not honesty.
     """
     scores_test = np.asarray(scores_test, dtype=np.float64)
     if scores_test.size == 0:
         return np.array([], dtype=object)
+    if not np.isfinite(scores_test).all():
+        raise ValueError("scores_test contains non-finite values")
     if sigma_thr is not None:
         accept = (scores_test <= q_hat) & (scores_test <= sigma_thr)
     else:
@@ -87,7 +100,15 @@ def three_way_gate(scores_test, scores_cal, outliers_flag_cal, alpha=0.05,
 
     CONTRACT: scores_cal MUST be real calibration residuals; passing
     zeros/placeholder makes q_hat=0 and every pair REJECTs (no ABSTAIN band).
+    scores_test with any non-finite value raises ValueError (one loud
+    policy, shared with conformal_calibrate): NaN satisfies no branch of the
+    ladder, so it would otherwise come out as an uninitialized label slot.
     """
+    scores_test = np.asarray(scores_test, dtype=np.float64)
+    if scores_test.size == 0:
+        return np.array([], dtype=object)
+    if not np.isfinite(scores_test).all():
+        raise ValueError("scores_test contains non-finite values")
     scores_cal = np.asarray(scores_cal, dtype=np.float64)
     outliers_flag_cal = np.asarray(outliers_flag_cal, dtype=bool)
     inliers = scores_cal[~outliers_flag_cal]
@@ -99,23 +120,35 @@ def three_way_gate(scores_test, scores_cal, outliers_flag_cal, alpha=0.05,
     scores_test = np.asarray(scores_test, dtype=np.float64)
     if scores_test.size == 0:
         return np.array([], dtype=object)
-    labels = np.empty(scores_test.size, dtype=object)
+    if not np.isfinite(scores_test).all():
+        raise ValueError("scores_test contains non-finite values")
+    labels = np.full(scores_test.size, "REJECT", dtype=object)
     labels[scores_test <= q_hat] = "ACCEPT"
     labels[(scores_test > q_hat) & (scores_test <= hi)] = "ABSTAIN"
     labels[scores_test > hi] = "REJECT"
     return labels
 
 
-def metrics_panel(residuals, inliers, q_hat, tier_label, extra=None):
+def metrics_panel(residuals, inliers, q_hat, tier_label, extra=None,
+                  alpha=ALPHA_DEFAULT, provenance_seed=SEED_DEFAULT):
     """JSON-serializable metrics panel stamped with a truth-tier label.
 
-    ece_proxy is |inlier_ratio - (1 - alpha)| with alpha = ALPHA_DEFAULT. It
-    is a PROXY only: it does not bin by predicted probability, so it is an
-    honest stand-in, not a full ECE. tier_label must be one of {1,2,3,4,5};
-    any other value raises ValueError.
+    ece_proxy is |inlier_ratio - (1 - alpha)|; alpha defaults to
+    ALPHA_DEFAULT and callers that calibrated at a different level must
+    pass the same alpha so the proxy basis matches.     It is a PROXY only: it
+    does not bin by predicted probability, so it is an honest stand-in, not
+    a full ECE. tier_label must be one of {0,1,2,3,4,5}: 0 is the N9
+    UNLABELED honesty tier a live pipeline stamps when the manifest omits
+    tier_label (an unlabeled chain must still export its panel), {1..5} are
+    the labeled tiers; any other value raises ValueError.
+
+    provenance_seed is the seed actually used by the randomized stages of
+    the producing chain (e.g. MAGSAC); it defaults to SEED_DEFAULT only for
+    direct callers without a chain, and a live pipeline passes its real
+    seed so the panel provenance never lies about randomness.
     """
-    if tier_label not in (1, 2, 3, 4, 5):
-        raise ValueError("tier_label must be one of {1,2,3,4,5}")
+    if tier_label not in (0, 1, 2, 3, 4, 5):
+        raise ValueError("tier_label must be one of {0,1,2,3,4,5}")
     residuals = np.asarray(residuals, dtype=np.float64)
     inliers = np.asarray(inliers, dtype=bool)
     n_pairs = int(residuals.size)
@@ -124,7 +157,7 @@ def metrics_panel(residuals, inliers, q_hat, tier_label, extra=None):
     rms_px = float(np.sqrt(np.mean(residuals ** 2))) if n_pairs else 0.0
     sub = residuals[inliers]
     rms_subpx = float(np.sqrt(np.mean(sub ** 2))) if sub.size else 0.0
-    ece_proxy = float(abs(inlier_ratio - (1.0 - ALPHA_DEFAULT)))
+    ece_proxy = float(abs(inlier_ratio - (1.0 - alpha)))
 
     hi = q_hat * ABSTAIN_PENALTY_DEFAULT
     if n_pairs:
@@ -151,7 +184,7 @@ def metrics_panel(residuals, inliers, q_hat, tier_label, extra=None):
         "provenance": {
             "date": datetime.date.today().isoformat(),
             "git_sha": _git_sha(),
-            "seed": SEED_DEFAULT,
+            "seed": int(provenance_seed),
         },
     }
     if extra:

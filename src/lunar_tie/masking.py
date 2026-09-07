@@ -7,9 +7,15 @@ Computes a boolean mask triple for a single-band image before matching:
 (3) SHADOW  = pixels likely in cast/permanent shadow. R0 has no SPICE, so
               shadow is approximated geometrically via an Otsu luminance
               threshold per tile: pixels at or below the Otsu low threshold
-              (the darker class lower edge). The interface is exposed so a
-              SPICE-based shadow mask can be swapped in during a later rigor
-              unit (2.x).
+              (the darker class lower edge). Shadow is BY DEFINITION the dark
+              MINORITY class: when the Otsu threshold makes (img <= thr) the
+              MAJORITY of the image, the split is a saturation-edge latch, not
+              a shadow verdict, and the shadow mask is left empty (a long
+              bright tail makes between-class variance rise monotonically to
+              the last bin, so otsu latches at the tail edge and a
+              majority-dark verdict is that latch, not shadow). The interface
+              is exposed so a SPICE-based shadow mask can be swapped in during
+              a later rigor unit (2.x).
 
 numpy + stdlib only. No cv2, no skimage, no pandas.
 """
@@ -77,6 +83,11 @@ def compute_masks(img, nodata_value=0, sat_value=None):
     combined = valid AND NOT nodata AND NOT shadow.
     nodata_value=None skips nodata masking. sat_value is the declared max
     (saturation) value; default is the dtype max for img.
+
+    Ambiguity policy (shadow): a None threshold (single-valued image) yields
+    zero shadow, and so does a threshold whose dark side holds the majority
+    of pixels: shadow is by definition the dark minority, so a majority-dark
+    Otsu verdict is a saturation-edge latch, not shadow.
     """
     img = np.asarray(img)
     if img.ndim != 2:
@@ -93,6 +104,12 @@ def compute_masks(img, nodata_value=0, sat_value=None):
 
     thr = otsu_threshold(img)
     if thr is None:
+        shadow = np.zeros(img.shape, dtype=bool)
+    elif float((img <= thr).sum()) > 0.5 * img.size:
+        # shadow minority rule: shadow is BY DEFINITION the dark minority
+        # class. An Otsu threshold whose "dark" side is the majority is the
+        # saturation-edge latch (long bright tail -> variance argmax at the
+        # last bin), not a shadow verdict; fall back to no shadow mask.
         shadow = np.zeros(img.shape, dtype=bool)
     else:
         shadow = img <= thr

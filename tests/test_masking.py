@@ -74,6 +74,14 @@ def test_fixture_b_otsu_separates_classes():
 
 
 def test_fixture_c_nodata_and_saturated_excluded():
+    """(c) top nodata band of 0s and bottom saturated band of 255s.
+
+    The middle 100-band is neither nodata nor shadow: otsu splits at 100
+    making the dark side (0s + 100s) the 75% majority, which the shadow
+    minority rule correctly refuses as a saturation-edge latch verdict, so
+    usable == valid == 50% (the old code shadowed the whole middle band and
+    usable was 0.0, a vacuous pass of the old < 50 assertion).
+    """
     img = _fixture_nodata_and_saturated_bands()
     masks = compute_masks(img)
     assert masks["nodata"][:16, :].all()
@@ -87,7 +95,7 @@ def test_fixture_c_nodata_and_saturated_excluded():
     s = summary_masks(img)
     assert s["nodata_pct"] == 50.0
     assert s["valid_pct"] == 50.0
-    assert s["usable_pct"] < 50.0
+    assert s["usable_pct"] == 50.0
 
 
 def test_nodata_none_skips_nodata_masking():
@@ -122,3 +130,43 @@ def test_save_load_roundtrip_exact():
         assert set(loaded.keys()) == set(masks.keys())
         for key in masks:
             assert np.array_equal(loaded[key], masks[key])
+
+
+def test_gate_fixture_bright_tail_no_shadow_latch():
+    """Shadow minority rule on the exact unit-10/MG2-style gate fixture.
+
+    Recipe: rng 10, 256x256, bg uniform(60, 190), 150 gaussian rocks clipped
+    at 255, uint8. The long bright tail makes between-class variance rise
+    monotonically to the saturation edge, so otsu latches at the last bin
+    (thr=254) and the naive (img <= thr) verdict marks 98.7% of the image as
+    'shadow', starving the pipeline (combined usable = 0.0%). Shadow is by
+    definition the dark MINORITY class: a majority-dark otsu verdict is that
+    latch, not shadow, so the mask must fall back to empty and combined
+    usable must stay well above 0.
+    """
+    rng = np.random.default_rng(10)
+    H = W = 256
+    img = rng.uniform(60, 190, (H, W))
+    for _ in range(150):
+        cx = rng.uniform(0, W - 1)
+        cy = rng.uniform(0, H - 1)
+        amp = rng.uniform(30, 110)
+        rad = rng.uniform(3, 12)
+        x0, x1 = int(max(0, cx - rad)), int(min(W, cx + rad))
+        y0, y1 = int(max(0, cy - rad)), int(min(H, cy + rad))
+        yy, xx = np.mgrid[y0:y1, x0:x1]
+        d2 = (xx - cx) ** 2 + (yy - cy) ** 2
+        img[y0:y1, x0:x1] = np.minimum(
+            255.0, img[y0:y1, x0:x1]
+            + amp * np.exp(-d2 / (2 * rad * rad / 4)))
+    img = img.astype(np.uint8)
+
+    thr = otsu_threshold(img)
+    assert thr == 254.0, thr  # the saturation-edge latch itself
+    assert (img <= thr).mean() > 0.5  # latch verdict: dark side is majority
+
+    masks = compute_masks(img)
+    assert not masks["shadow"].any()
+    assert masks["combined"].mean() > 0.3, masks["combined"].mean()
+    s = summary_masks(img)
+    assert s["usable_pct"] > 30.0

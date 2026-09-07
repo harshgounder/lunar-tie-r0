@@ -48,9 +48,41 @@ MAGSAC_ITERS = 2000
 MAGSAC_SIGMA = 2.5
 MAGSAC_SEED = 13
 SUBPIXEL_HALF = 16
+# detect contrast threshold lowered from the 0.03 default: the unit-10/MG2
+# fixture's 12-value shadow band + 255-clipped outlier blocks carry weak DoG
+# edges that 0.03 discards, leaving every band tie border-adjacent (F14 rule:
+# within half=16 px of the border) so subpixel marks it invalid and the chain
+# starves at step 7 (2 < 3 refinements). 0.02 keeps the block edges and gives
+# the conformal holdout n >= 19 so q_hat is finite (k = ceil((n+1)*0.95) <= n
+# needs n >= 19 at alpha 0.05).
+CONTRAST_THRESHOLD = 0.02
 CONF_ALPHA = 0.05
 TIES_N_TARGET = 120
 TIES_MIN_DISTANCE = 32.0
+# conformal holdout: even-index post-refit ties calibrate BOTH gates, odd
+# gated. Calibrating and gating on the same array is the self-referential
+# trap (audit F2): a gate cannot fail on its own training quantile.
+CONFORMAL_STRIDE = 2
+
+
+def validate_tier(tier_label):
+    """Validate a manifest tier value; return it unchanged or raise.
+
+    Accepts only true JSON integers in {0} union {1..5}: bools, floats,
+    strings and None raise PipelineError. Tier 0 is legal only through the
+    N9 unlabeled path (tier_label omitted from the manifest); a manifest
+    that explicitly writes 0 is a labeled UNLABELED claim and is rejected
+    here to keep 0 out of the labeled tiers.
+    """
+    if isinstance(tier_label, bool) or not isinstance(tier_label, int):
+        raise PipelineError(
+            f"manifest tier_label must be a JSON integer in {{0}} union "
+            f"{{1..5}}, got {tier_label!r}")
+    if tier_label == 0 or tier_label in (1, 2, 3, 4, 5):
+        return tier_label
+    raise PipelineError(
+        f"manifest tier_label must be a JSON integer in {{0}} union "
+        f"{{1..5}}, got {tier_label!r}")
 
 
 class PipelineError(RuntimeError):
@@ -91,10 +123,12 @@ def run_pair(manifest_path, outdir, verbose=False):
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     manifest = load_manifest(manifest_path)
-    tier_label = int(manifest["tier_label"])
+    # A3 (audit F3): loud tier validation BEFORE anything runs; the old
+    # min(t, 1) or 1 laundering passed 9/3.7/"3"/true through silently.
+    tier_label = validate_tier(manifest["tier_label"])
     provenance = str(manifest["provenance"])
 
-    # ---- step 1: load (memmap, float64 cast) --------------------------------
+    # ---- step 1: load (memmap, raw dtype preserved for masks) ---------------
     def _load_image(key):
         p = Path(manifest[key])
         if not p.is_file():
@@ -104,32 +138,38 @@ def run_pair(manifest_path, outdir, verbose=False):
         arr = np.load(p, mmap_mode="r")
         if arr.ndim != 2:
             raise PipelineError(f"'{key}' is not a 2D array: {p}")
-        return np.asarray(arr, dtype=np.float64)
+        return arr
 
-    imgA = _load_image("a")
-    imgB = _load_image("b")
-    H, W = imgA.shape
-    if imgB.shape != imgA.shape:
+    imgA_raw = _load_image("a")
+    imgB_raw = _load_image("b")
+    H, W = imgA_raw.shape
+    if imgB_raw.shape != imgA_raw.shape:
         raise PipelineError(
-            f"image shapes differ: a={imgA.shape} b={imgB.shape}")
-    _progress(1, "load", f"a={imgA.shape[1]}x{imgA.shape[0]} float64 memmap")
+            f"image shapes differ: a={imgA_raw.shape} b={imgB_raw.shape}")
+    _progress(1, "load", f"a={W}x{H} {imgA_raw.dtype} memmap")
 
-    # ---- step 2: mask --------------------------------------------------------
-    masksA = compute_masks(imgA)
-    masksB = compute_masks(imgB)
+    # ---- step 2: mask (on the RAW dtype BEFORE any float cast) --------------
+    # C9 (commander round 3): masks must see the raw memmap dtype so the
+    # saturation gate is the integer dtype max; a float64 cast first makes
+    # _default_sat_limit return float64 max and saturation never fires.
+    masksA = compute_masks(imgA_raw)
+    masksB = compute_masks(imgB_raw)
     usableA = masksA["combined"]
     usableB = masksB["combined"]
-    usable_pct = 100.0 * float(usableA.sum()) / imgA.size
+    usable_pct = 100.0 * float(usableA.sum()) / imgA_raw.size
     _progress(2, "mask", f"usable={usable_pct:.1f}% (a)")
 
-    # ---- step 3: normalize ---------------------------------------------------
-    nA = normalize_ratio(imgA)
-    nB = normalize_ratio(imgB)
-    _progress(3, "normalize", "ratio-norm float32 [~ -1, 1]")
+    # ---- step 3: normalize (masks APPLIED: nodata/shadow/saturated pixels
+    #      are zeroed before detect so they never key or match) ---------------
+    nA = normalize_ratio(np.asarray(imgA_raw, dtype=np.float64))
+    nB = normalize_ratio(np.asarray(imgB_raw, dtype=np.float64))
+    nA = np.where(usableA, nA, 0.0).astype(np.float32)
+    nB = np.where(usableB, nB, 0.0).astype(np.float32)
+    _progress(3, "normalize", "ratio-norm float32 [~ -1, 1], masks applied")
 
     # ---- step 4: detect ------------------------------------------------------
-    kpA, dA = detect_keypoints_rdsift(nA)
-    kpB, dB = detect_keypoints_rdsift(nB)
+    kpA, dA = detect_keypoints_rdsift(nA, contrast_threshold=CONTRAST_THRESHOLD)
+    kpB, dB = detect_keypoints_rdsift(nB, contrast_threshold=CONTRAST_THRESHOLD)
     _progress(4, "detect", f"A={len(kpA)} B={len(kpB)} keys")
     if len(kpA) == 0 or len(kpB) == 0:
         raise PipelineError("detector starved: zero keypoints on a side")
@@ -161,15 +201,19 @@ def run_pair(manifest_path, outdir, verbose=False):
     # refine_matches contract: dst_pts are the M-warped src positions; the
     # measured delta is applied on imgB relative to those warped positions
     # and refined dst = dst_pts + delta.
-    src0 = cons  # alias for readability below
     inliers0 = cons["inliers"]
     src_in = src[inliers0]
     dst_in = dst[inliers0]
     warped0 = src_in @ M[:, :2].T + M[:, 2]
-    ref = refine_matches(imgA, imgB, src_in, warped0, half=SUBPIXEL_HALF)
+    ref = refine_matches(imgA_raw, imgB_raw, src_in, warped0,
+                         half=SUBPIXEL_HALF)
     valid = ref["valid"]
-    if not valid.any():
-        raise PipelineError("subpixel refinement rejected every inlier")
+    # C6a: a consensus floor of 2 is not enough to re-fit + calibrate on;
+    # fewer than 3 valid refinements is a loud chain failure, not an
+    # unhandled numpy error from cons2's rng.choice(size=3).
+    if int(valid.sum()) < 3:
+        raise PipelineError(
+            f"subpixel refinement kept too few ties: {int(valid.sum())} < 3")
     refined_src = ref["src"][valid]
     refined_dst = ref["dst"][valid]
     # re-fit via magsac ONE more time on the refined coords
@@ -177,6 +221,11 @@ def run_pair(manifest_path, outdir, verbose=False):
                              iters=MAGSAC_ITERS, sigma_thr=MAGSAC_SIGMA,
                              seed=MAGSAC_SEED)
     M2 = cons2["M"]
+    # C6b: fewer than 3 refit inliers cannot support coverage + conformal
+    # (a 2-point similarity has zero residuals and voids every gate).
+    if int(cons2["inliers"].sum()) < 3:
+        raise PipelineError(
+            "post-refit consensus collapsed: fewer than 3 inliers")
     src_f = refined_src[cons2["inliers"]]
     dst_f = refined_dst[cons2["inliers"]]
     weights_f = ref["peak_vals"][valid][cons2["inliers"]]
@@ -201,27 +250,45 @@ def run_pair(manifest_path, outdir, verbose=False):
     # ---- step 9: conformal -----------------------------------------------------
     # final inlier residuals under the refit model M2
     resid_f = similarity_residuals(M2, src_f, dst_f)
-    q_hat = conformal_calibrate(resid_f, alpha=CONF_ALPHA)
-    labels = conformal_gate(resid_f, q_hat)
+    # A2 (audit F2) + C1: BOTH gates are calibrated on a held-out split
+    # (even-index residuals) and gate the complement (odd-index). Passing
+    # the same array as its own calibration set drives the accept fraction
+    # to ~1 by construction: a comparison satisfiable in itself.
+    cal_mask = np.arange(resid_f.size) % CONFORMAL_STRIDE == 0
+    gate_mask = ~cal_mask
+    resid_cal = resid_f[cal_mask]
+    resid_test = resid_f[gate_mask]
+    q_hat = conformal_calibrate(resid_cal, alpha=CONF_ALPHA)
+    labels = conformal_gate(resid_test, q_hat)
     n_accept = int((labels == "ACCEPT").sum())
-    tw_labels = three_way_gate(resid_f, resid_f,
-                               np.zeros(resid_f.size, dtype=bool),
+    tw_labels = three_way_gate(resid_test, resid_cal,
+                               np.zeros(resid_cal.size, dtype=bool),
                                alpha=CONF_ALPHA)
     n3_accept = int((tw_labels == "ACCEPT").sum())
     n3_abstain = int((tw_labels == "ABSTAIN").sum())
     _progress(9, "conformal",
-              f"q_hat={q_hat:.4f} accept={n_accept} "
-              f"3way={n3_accept}/{resid_f.size}"
-              f" abstain={n3_abstain} reject={resid_f.size - n3_accept - n3_abstain}")
+              f"q_hat={q_hat:.4f} accept={n_accept}/{resid_test.size} "
+              f"3way={n3_accept}/{resid_test.size}"
+              f" abstain={n3_abstain} reject={resid_test.size - n3_accept - n3_abstain}")
 
     # ---- step 10: panel + artifacts --------------------------------------------
-    # metrics_panel validates tier_label in {1..5}, but the N9 honesty
-    # default for an unlabeled manifest is tier 0; keep the panel dict
-    # intact and override the tier afterwards (never silently tier 0).
-    panel = metrics_panel(resid_f, np.ones(resid_f.size, dtype=bool),
-                          q_hat, tier_label=min(tier_label, 1) or 1,
+    # A3 (audit F3): tier validated loudly at manifest load; no
+    # min(t, 1) or 1 laundering here. The N9 unlabeled path (tier 0) keeps
+    # the honest default stamp without passing 0 through the labeled-tier
+    # validator.
+    # A1 (audit F1): panel_mask is the REAL post-refit inlier mask (cons2
+    # inliers over resid_f) intersected with the coverage selection, a real
+    # measured subset: n_pairs counts every resid_f entry, n_valid counts
+    # the coverage-selected ties, so inlier_ratio = ties / n_pairs is
+    # measured, not the vacuous all-true 1.0.
+    panel_mask = np.zeros(resid_f.size, dtype=bool)
+    panel_mask[np.where(cons2["inliers"])[0][tie_idx]] = True
+    panel = metrics_panel(resid_f, panel_mask, q_hat, tier_label=tier_label,
+                          alpha=CONF_ALPHA, provenance_seed=MAGSAC_SEED,
                           extra={
                               "provenance_str": provenance,
+                              "resid_f_size": int(resid_f.size),
+                              "n_ties": int(tie_idx.size),
                               "occupancy_ratio": cov["occupancy_ratio"],
                               "occupied_cells": cov["occupied_cells"],
                               "coverage_entropy": cov["coverage_entropy"],

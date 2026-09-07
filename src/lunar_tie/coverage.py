@@ -153,7 +153,15 @@ def anms_select(scores, pts, n_target, min_distance, W=None, H=None,
 
     When W/H are omitted the grid is derived from the point bounding box.
     Returns the selected point indices in acceptance order. Empty input or
-    n_target <= 0 yields an empty array; n_target > pool size yields all.
+    n_target <= 0 yields an empty array.
+
+    min_distance PRECEDENCE: the distance guard applies in BOTH rounds even
+    when it leaves slots unfilled, so n_target > pool size does NOT
+    necessarily return every pool point: a tight cluster (pairwise closer
+    than min_distance) contributes only points that clear the guard from the
+    already-accepted set (a 4-point cluster 1 px apart with n_target=10,
+    min_distance=40 selects 1, not 4). Spread wins over the target count by
+    design; call with min_distance <= 0 when the full pool is wanted.
     """
     scores = np.asarray(scores, dtype=np.float64)
     pts = np.asarray(pts, dtype=np.float64)

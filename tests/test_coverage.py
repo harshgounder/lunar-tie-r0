@@ -79,6 +79,23 @@ def test_anms_target_larger_than_pool_returns_all():
     assert idx.size == 2
 
 
+def test_anms_min_distance_guard_precedes_target_when_clustered():
+    """F6 (audit): the docstring used to promise 'n_target > pool yields
+    all', but the min_distance guard takes precedence in both rounds: a
+    tight cluster with n_target above the pool size selects only the points
+    that clear the guard, not the whole pool. Spread wins over the count."""
+    cluster = np.array([[256.0, 256.0], [256.5, 256.0],
+                        [257.0, 256.0], [257.5, 256.0]])
+    idx = anms_select(np.array([1.0, 0.9, 0.8, 0.7]), cluster, n_target=10,
+                      min_distance=40.0, W=W, H=H)
+    assert idx.size == 1, idx
+    # the guard lifted: the same pool fills past the target
+    idx_all = anms_select(np.array([1.0, 0.9, 0.8, 0.7]), cluster, n_target=10,
+                          min_distance=0.0, W=W, H=H)
+    assert idx_all.size == 4
+    assert sorted(idx_all.tolist()) == [0, 1, 2, 3]
+
+
 def test_anms_high_score_cluster_loses_to_spread():
     rng = np.random.default_rng(7)
     base = np.array([W / 2, H / 2]) + rng.normal(0.0, 2.0, size=(30, 2))
