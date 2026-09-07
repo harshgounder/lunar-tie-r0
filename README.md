@@ -6,7 +6,7 @@ lunar imagery to sub-pixel accuracy. This repo is milestone 1: the complete
 classical pipeline spine, engineered gate-first, with an adversarial
 verification battery fired at every unit.
 
-[![tests](https://img.shields.io/badge/tests-119%2F119-brightgreen)]() [![modules](https://img.shields.io/badge/modules-9-blue)()] [![zero Ch-2 inputs](https://img.shields.io/badge/Ch--2%20inputs-zero-orange)]() [![phase](https://img.shields.io/badge/milestone-1%20of%206-lightgrey)]()
+[![tests](https://img.shields.io/badge/tests-154%2F154-brightgreen)]() [![modules](https://img.shields.io/badge/modules-14-blue)()] [![zero Ch-2 inputs](https://img.shields.io/badge/Ch--2%20inputs-zero-orange)]() [![phase](https://img.shields.io/badge/milestone-1%20of%206-lightgrey)]()
 
 ## the problem, in 3 sentences
 
@@ -40,7 +40,7 @@ behind a passing suite), and 2 overclaims in my own tickets. Nothing was
 rubber-stamped. See LIE-CHECK-PROTOCOL.md in the parent campaign repo for the
 full battery spec.
 
-## the modules (all green, 119/119 tests)
+## the modules (all green, 154/154 tests; 09-07 hardening: 24 audit findings fixed)
 
 | # | module | what it does | gate | commit |
 |---|--------|--------------|------|--------|
@@ -57,6 +57,9 @@ full battery spec.
 | 4B | `photometric.py` (add) | RIFT-style rank transform, exact gain invariance (mismatch 0.000000) | 5 tests: PASS (bundled w/ MG2) | `5016273` |
 | - | MINI-GATE-2 | full M1 chain on similarity pair | s=1.2001 theta=0.2000 exact, 64.9% inliers, rms 0.146px, occupancy 48.4%: PASS | `5016273` |
 | 10 | `pipeline.py` | CLI driver: 10-step chain, artifacts (panel/ties/summary), N9 tier-0+UNLABELED default, loud errors | 6/6 gate + cleanroom tie delta (4.031, 3.031) vs truth (4, 3): PASS | `5a5f6e1` |
+| 11 | `pds4label.py` | PDS4 XML label parser (dims, dtype, misc refs) for real ISDA products | synthetic-label round-trip: PASS | `10f8e7a` |
+| 12 | `ch2_ingest.py` | product zip ingest: label + binary + browse + misc extraction, memmap strip reader (never materializes) | synthetic-zip round-trip: PASS | `10f8e7a` |
+| 13 | `sun_angles.py` | spm (sun parameter) file parser, generic positional columns | synthetic-spm fixture: PASS | `10f8e7a` |
 
 Run it yourself:
 
@@ -68,7 +71,7 @@ uv pip install pytest numpy
 .venv/bin/pytest tests/ -q
 ```
 
-Expected: `119 passed`.
+Expected: `154 passed`.
 
 ## architecture: the pipeline spine
 
@@ -109,10 +112,10 @@ milestone-3 wires up.
 
 ## context: the campaign this belongs to
 
-- full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 221-file audited corpus, decomposition into 114 single-topic units, 16-wave deep-research layer, factor atlas
+- full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 309-row canon, decomposition into 114 single-topic units, 10-wave relation campaign, factor atlas
 - build plan of record: `docs/BRIEF-MILESTONE-1-R0-SPINE.md` in that repo
 - monster-hunt + zoo-router architecture: `research/MONSTER-*.md`
-- the "11 units in one day" was made possible by: opencode (coding agent) by: opencode (coding agent)
+- the "11 units in one day" was made possible by: opencode (coding agent)
   writing 100% of the source, a Hermes-orchestrated gate loop doing 100% of
   the verification, and an aggressive lie-hunt protocol catching defects the
   green test-suites alone would never surface.
