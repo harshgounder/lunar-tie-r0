@@ -40,7 +40,10 @@ behind a passing suite), and 2 overclaims in my own tickets. Nothing was
 rubber-stamped. See LIE-CHECK-PROTOCOL.md in the parent campaign repo for the
 full battery spec.
 
-## the modules (all green, 154/154 tests; 09-07 hardening: 24 audit findings fixed)
+## the modules (all green, 154/154 tests; 09-07 hardening: 24 fixes total =
+14 audit findings F1-F14 + 9 commander items C1-C9 (C2 never existed, C6
+split a/b) + 1 repair round; corrected 09-07 night, the old line
+presented the 24 as one audit count)
 
 | # | module | what it does | gate | commit |
 |---|--------|--------------|------|--------|
@@ -112,7 +115,7 @@ milestone-3 wires up.
 
 ## context: the campaign this belongs to
 
-- full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 309-row canon, decomposition into 114 single-topic units, 10-wave relation campaign, factor atlas
+- full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 319-row canon (09-07 night: was 309 before the r1-r7 + x1-x3 wave rows landed), decomposition into 114 single-topic units, 10-wave relation campaign, factor atlas
 - build plan of record: `docs/BRIEF-MILESTONE-1-R0-SPINE.md` in that repo
 - monster-hunt + zoo-router architecture: `research/MONSTER-*.md`
 - the "11 units in one day" was made possible by: opencode (coding agent)
