@@ -59,7 +59,7 @@ def test_list_contents_kinds(product_zip):
 def test_ingest_product_structure(product_zip):
     info = ingest_product(product_zip)
     assert info["dims"] == {"lines": 6, "samples": 4}
-    assert info["dtype"] == "u2"
+    assert info["dtype"] == "<u2"
     assert info["offsets"]["img"].endswith(".img")
     assert info["offsets"]["xml"].endswith(".xml")
     assert info["offsets"]["browse"].endswith(".png")

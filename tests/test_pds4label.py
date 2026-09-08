@@ -8,7 +8,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from lunar_tie.pds4label import parse_label, label_misc_paths
+from lunar_tie.pds4label import (parse_label, label_misc_paths,
+                                 _parse_data_type)
+from lunar_tie.ch2_ingest import read_strip
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "pds4_minimal.xml")
 
@@ -25,7 +27,7 @@ def test_dimensions_from_axis_arrays(label):
 
 def test_data_type_mapping(label):
     assert label["data_type"] == "UnsignedLSB2"
-    assert label["dtype"] == "u2"
+    assert label["dtype"] == "<u2"
     np.dtype(label["dtype"])  # must be a real numpy dtype string
 
 
@@ -126,7 +128,7 @@ def test_direct_child_still_works():
 def test_unsignedshort_maps_u2():
     out = _parse_xml_str(_REAL_TMC_LABEL)
     assert out["data_type"] == "UnsignedLSB2"
-    assert out["dtype"] == "u2"
+    assert out["dtype"] == "<u2"
 
 def test_real_isda_nesting_fixture():
     """TICKET-RD03 follow-up: the shared real-nesting fixture parses to u1
@@ -136,3 +138,43 @@ def test_real_isda_nesting_fixture():
     assert lbl["lines"] == 120
     assert lbl["samples"] == 80
     assert lbl["dtype"] == "u1"
+
+
+# TICKET-RD04 (MSB byte-order fix, audit L1): endianness must be explicit.
+# MSB* types map to big-endian numpy dtypes, LSB* to little-endian. Native
+# ('=') dtypes silently misread big-endian products as byte-swapped garbage.
+
+def test_msb2_maps_big_endian():
+    assert _parse_data_type("UnsignedMSB2") == ">u2"
+    assert _parse_data_type("SignedMSB2") == ">i2"
+
+
+def test_msb4_maps_big_endian():
+    assert _parse_data_type("SignedMSB4") == ">i4"
+    assert _parse_data_type("UnsignedMSB4") == ">u4"
+
+
+def test_lsb_maps_little_endian():
+    assert _parse_data_type("UnsignedLSB2") == "<u2"
+    assert _parse_data_type("SignedLSB2") == "<i2"
+    assert _parse_data_type("SignedLSB4") == "<i4"
+    assert _parse_data_type("UnsignedLSB8") == "<u8"
+
+
+def test_byte_order_actually_matters(tmp_path):
+    """A big-endian u2 buffer parsed via a label saying UnsignedMSB2 must
+    round-trip [1, 258, 3, 4], not the byte-swapped [256, 770, ...]."""
+    values = [1, 258, 3, 4]
+    img_path = tmp_path / "msb.img"
+    img_path.write_bytes(np.array(values, dtype=">u2").tobytes())
+    label = {"lines": 1, "samples": 4, "dtype": _parse_data_type("UnsignedMSB2")}
+    mm = read_strip(str(img_path), label)
+    got = [int(v) for v in mm.ravel()]
+    del mm
+    assert got == values
+
+
+def test_parse_data_type_passthrough_unknown():
+    """Unknown type names keep passing through raw (documented behavior)."""
+    assert _parse_data_type("SomeFutureType9") == "SomeFutureType9"
+    assert _parse_data_type(None) is None

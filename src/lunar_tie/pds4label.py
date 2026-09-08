@@ -12,7 +12,10 @@ pds3label.py is intentionally untouched; PDS4 is a separate format.
 import os
 import xml.etree.ElementTree as ET
 
-# PDS4 data_type -> numpy dtype string (numpy+stdlib only; no planetary db)
+# PDS4 data_type -> numpy BASE dtype string (numpy+stdlib only; no planetary
+# db). Endianness is NOT baked in here: _parse_data_type prefixes the base
+# with the explicit order from _PDS4_ORDER so MSB products can never be read
+# as native little-endian byte-swapped garbage (TICKET-RD04, audit L1).
 PDS4_DATA_TYPES = {
     "UnsignedByte": "u1",
     "SignedByte": "i1",
@@ -80,11 +83,23 @@ def _parse_axis_array(axis_array):
 
 
 def _parse_data_type(data_type_name):
-    """Map a PDS4 data_type name to a numpy dtype string (or None)."""
+    """Map a PDS4 data_type name to an EXPLICIT-endianness numpy dtype string.
+
+    MSB* -> '>' + base, LSB* -> '<' + base (TICKET-RD04). Byte types
+    (UnsignedByte/SignedByte) are 1 byte wide: endianness is irrelevant, so
+    they stay unprefixed u1/i1. Unknown names pass through raw (or None).
+    """
     if data_type_name is None:
         return None
     if data_type_name in PDS4_DATA_TYPES:
-        return PDS4_DATA_TYPES[data_type_name]
+        base = PDS4_DATA_TYPES[data_type_name]
+        # order token substring matches both the integer family
+        # (UnsignedMSB2) and the IEEE754 family (IEEE754MSBSingle); the
+        # 1-byte types carry no token and stay unprefixed.
+        for token, prefix in _PDS4_ORDER.items():
+            if token in data_type_name:
+                return prefix + base
+        return base
     # unknown generic: keep the name, let the caller decide
     return data_type_name
 
