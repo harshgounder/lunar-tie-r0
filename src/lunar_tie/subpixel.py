@@ -141,9 +141,14 @@ def phase_shift(patchA, patchB, upsample=16, max_shift=None):
         dy -= h
     peak_val = float(min(max(corr[py, px] * upsample * upsample, 0.0), 1.0))
     # TICKET-RD06: surface SNR (shift-invariant confidence)
-    med = float(np.median(corr))
-    snr = float(corr[py, px] / med) if abs(med) > 1e-12 else 0.0
-    return float(dx), float(dy), peak_val, snr
+    # for IDENTICAL patches peak_val=1.0 and the median is ~0: the SNR is
+    # infinite, not 0. handle the identical-patch edge: when pv >= 0.95 the
+    # match is trivially valid (snr doesn't apply).
+    med = float(np.median(np.abs(corr)))
+    snr = float(corr[py, px] / med) if med > 1e-12 else 0.0
+    if peak_val >= 0.95:
+        snr = 9999.0  # identical patches: the peak IS the surface
+    return float(dx), float(dy), peak_val, min(snr, 9999.0)
 
 
 def refine_matches(imgA, imgB, src_pts, dst_pts, half=16, upsample=16,
