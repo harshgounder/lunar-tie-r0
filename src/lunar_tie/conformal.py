@@ -117,11 +117,6 @@ def three_way_gate(scores_test, scores_cal, outliers_flag_cal, alpha=0.05,
     q_hat = conformal_calibrate(inliers, alpha)
     hi = q_hat * abstain_penalty
 
-    scores_test = np.asarray(scores_test, dtype=np.float64)
-    if scores_test.size == 0:
-        return np.array([], dtype=object)
-    if not np.isfinite(scores_test).all():
-        raise ValueError("scores_test contains non-finite values")
     labels = np.full(scores_test.size, "REJECT", dtype=object)
     labels[scores_test <= q_hat] = "ACCEPT"
     labels[(scores_test > q_hat) & (scores_test <= hi)] = "ABSTAIN"

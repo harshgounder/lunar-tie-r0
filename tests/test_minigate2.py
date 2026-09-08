@@ -126,5 +126,10 @@ def main():
     print()
     print('MINI-GATE-2: PASS (full M1 chain composes; similarity truth recovered within 1%; conformal + coverage + panel labeled tier-3)')
 
+
+def test_minigate2_exact_numbers():
+    main()
+
+
 if __name__ == '__main__':
     main()

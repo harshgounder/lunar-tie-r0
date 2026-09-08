@@ -87,13 +87,14 @@ def phase_shift(patchA, patchB, upsample=16, max_shift=None):
     grid gives the sub-pixel dx, dy. peak_val is the normalized peak height in
     [0, 1] and serves as a confidence proxy.
 
-    TICKET-RD06 (audit A3+A4): max_shift restricts the argmax search to
-    a [-max_shift, +max_shift] window around the surface center (the
-    shift is small after consensus; lobes outside that window are
-    aliases, not signal). snr = peak / median(corr_surface): a correct
-    phase correlation has snr >> 5; an alias or noise floor has snr
-    ~ 1-2. snr is shift-invariant (unlike peak_val which normalizes by
-    the zero-shift response).
+    TICKET-RD06 (audit A3+A4): max_shift rejects shifts beyond the limit
+    AFTER the dx/dy unwrap and parabola fit (the phase-corr peak wraps the
+    FFT boundary, so the check cannot be an argmax window). If the final
+    |dx| or |dy| exceeds max_shift, the result is returned with peak_val 0.0
+    and snr 0.0 as an explicit out-of-range marker the caller's gate rejects.
+    snr = peak / median(corr_surface): a correct phase correlation has
+    snr >> 5; an alias or noise floor has snr ~ 1-2. snr is shift-invariant
+    (unlike peak_val which normalizes by the zero-shift response).
     """
     a = np.asarray(patchA, dtype=np.float64)
     b = np.asarray(patchB, dtype=np.float64)
@@ -148,6 +149,8 @@ def phase_shift(patchA, patchB, upsample=16, max_shift=None):
     snr = float(corr[py, px] / med) if med > 1e-12 else 0.0
     if peak_val >= 0.95:
         snr = 9999.0  # identical patches: the peak IS the surface
+    if max_shift is not None and (abs(dx) > max_shift or abs(dy) > max_shift):
+        return float(dx), float(dy), 0.0, 0.0
     return float(dx), float(dy), peak_val, min(snr, 9999.0)
 
 
