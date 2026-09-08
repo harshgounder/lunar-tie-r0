@@ -52,7 +52,7 @@ def angles_for_product(utc_obs, naif_id="-152", frame_id=-152001):
     inc_deg = math.degrees(inc_rad)
 
     # phase angle: sun-target-observer
-    phase_deg = math.degrees(sp.phaseq(et, "SUN", naif_id, "301", "NONE"))
+    phase_deg = math.degrees(sp.phaseq(et, "301", "SUN", naif_id, "NONE"))
 
     # emission: boresight vs the surface normal (nadir approximation)
     emis_deg = math.degrees(sp.vsep(z_body, st[:3]))
