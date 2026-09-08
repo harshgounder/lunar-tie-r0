@@ -65,3 +65,14 @@ R0 vertical slice = ONE pipeline:
 - no crater graph (no D6) - milestone 3
 - no Ch-2 products required anywhere - N9 zero-input guarantee
 - no geometric refinement beyond 2-px sanity; sub-pixel claims need milestones 4-5
+
+## real-data era (added 09-08, TICKET-RD02/RD03)
+
+three modules beyond the original M1 spine, added when real ISDA bytes
+arrived: realdata.py (extract_product streaming, crop_strip float32,
+region_window corner-georef, crop_pair manifest), geometry.py
+(find_geometry_csv, load_geometry_grid streaming, window_from_geometry),
+sun_angles.py (parse_spm, spm_column). verified on real products:
+OHRC 79796x12000 u1, TMC nca/ncf 214557x4000 u2. suite 181/181.
+TICKET-RD03 fixed pds4label Element_Array nesting (data_type grandchild
+of Array_2D_Image in real ISDA labels; synthetic fixtures had it direct).

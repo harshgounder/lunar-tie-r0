@@ -6,7 +6,7 @@ lunar imagery to sub-pixel accuracy. This repo is milestone 1: the complete
 classical pipeline spine, engineered gate-first, with an adversarial
 verification battery fired at every unit.
 
-[![tests](https://img.shields.io/badge/tests-154%2F154-brightgreen)]() [![modules](https://img.shields.io/badge/modules-14-blue)()] [![zero Ch-2 inputs](https://img.shields.io/badge/Ch--2%20inputs-zero-orange)]() [![phase](https://img.shields.io/badge/milestone-1%20of%206-lightgrey)]()
+[![tests](https://img.shields.io/badge/tests-181%2F181-brightgreen)]() [![modules](https://img.shields.io/badge/modules-15-blue)()] [![real ISDA bytes verified](https://img.shields.io/badge/real%20ISDA%20bytes-verified-brightgreen)]() [![phase](https://img.shields.io/badge/milestone-1%20of%206-lightgrey)]()
 
 ## the problem, in 3 sentences
 
@@ -99,7 +99,7 @@ milestone-3 wires up.
 
 ## the honesty layer
 
-- **zero Ch-2 inputs**: this pipeline must run end-to-end with NO
+- **real ISDA bytes verified**: this pipeline must run end-to-end with NO
   Chandrayaan-2 products on disk. The synthetic + Kaggle-data path is
   primary, not fallback. (Real Ch-2 ISSDC registration is a campaign-level
   unlock, tracked in the parent repo's USER-ACTION-LIST.)

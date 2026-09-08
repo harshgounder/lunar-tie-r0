@@ -127,3 +127,12 @@ def test_unsignedshort_maps_u2():
     out = _parse_xml_str(_REAL_TMC_LABEL)
     assert out["data_type"] == "UnsignedLSB2"
     assert out["dtype"] == "u2"
+
+def test_real_isda_nesting_fixture():
+    """TICKET-RD03 follow-up: the shared real-nesting fixture parses to u1
+    (real ISDA labels nest data_type under Element_Array)."""
+    fx = os.path.join(os.path.dirname(__file__), "fixtures", "pds4_real_nesting.xml")
+    lbl = parse_label(fx)
+    assert lbl["lines"] == 120
+    assert lbl["samples"] == 80
+    assert lbl["dtype"] == "u1"

@@ -4,7 +4,7 @@
 
 ## the final state, re-derived (not remembered)
 - repo: github.com/harshgounder/lunar-tie-r0 (private), local ~/lunar-tie-r0
-- suite: 119/119 tests across 10 modules + pipeline
+- suite: 119/119 [SUPERSEDED 09-08: suite now 182/182 after RD02/RD03] tests across 10 modules + pipeline
 - MINI-GATE-1 (tiling+masking at 12000x12000): PASS (d18ffb8)
 - MINI-GATE-2 (full chain on similarity pair): PASS (5016273)
   s=1.2001 vs 1.2 | theta 0.2000 vs 0.2 | inliers 64.9% |
@@ -55,7 +55,7 @@ each one: FIX round -> independent re-run -> ledger row. zero deferred.
   budget declared pre-fire, monster #1 candidate = track-B row
 
 ## sign-off
-M1 closed by Hermes audit: suite 119/119, 6/6 repos pushed 0/0,
+M1 closed by Hermes audit: suite 119/119 [SUPERSEDED 09-08: suite now 182/182 after RD02/RD03], 6/6 repos pushed 0/0,
 tickets 14, ledger 20 rows, all canon docs current. build integrity:
 every landed unit carries an independently-run gate + negative-gate
 battery + lie-hunt pass. M1 DONE.
