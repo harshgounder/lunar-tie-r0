@@ -6,7 +6,11 @@ lunar imagery to sub-pixel accuracy. This repo is milestone 1: the complete
 classical pipeline spine, engineered gate-first, with an adversarial
 verification battery fired at every unit.
 
-[![tests](https://img.shields.io/badge/tests-181%2F181-brightgreen)]() [![modules](https://img.shields.io/badge/modules-15-blue)()] [![real ISDA bytes verified](https://img.shields.io/badge/real%20ISDA%20bytes-verified-brightgreen)]() [![phase](https://img.shields.io/badge/milestone-1%20of%206-lightgrey)]()
+[![tests](https://img.shields.io/badge/tests-196%2F196-brightgreen)]() [![modules](https://img.shields.io/badge/modules-17-blue)()] [![real ISDA bytes verified](https://img.shields.io/badge/real%20ISDA%20bytes-verified-brightgreen)]() [![phase](https://img.shields.io/badge/milestone-1%20of%206-lightgrey)]()
+
+(09-08 stamp: badges re-derived live after the RD04-RD08 fix chain: pytest
+196 passed in 36.0s, 17 modules on disk. hand-typed counts drift; this
+badge is re-stamped after every landing.)
 
 ## the problem, in 3 sentences
 
@@ -15,9 +19,10 @@ pushbroom, up to 1.2 gigapixels), TMC-2 stereo at 5 m/px, IIRS hyperspectral at
 80 m/px across 256 bands. The mission asks for tie points that link these
 products despite 20x-320x scale gaps, changing sun angles, and pushbroom
 geometry whose epipolar curves are hyperbolas, not lines. Nobody has published
-an end-to-end solution; our 221-file research corpus (fully audited) confirmed
-the whitespace survives every 2023-2026 literature sweep, and this repo starts
-the build from the ground floor.
+an end-to-end solution; the campaign research corpus (fully audited, count
+derived in the parent repo) confirmed the whitespace survives every
+2023-2026 literature sweep, and this repo starts the build from the ground
+floor.
 
 ## why "gate-first" (the method, not just the code)
 
@@ -40,10 +45,11 @@ behind a passing suite), and 2 overclaims in my own tickets. Nothing was
 rubber-stamped. See LIE-CHECK-PROTOCOL.md in the parent campaign repo for the
 full battery spec.
 
-## the modules (all green, 154/154 tests; 09-07 hardening: 24 fixes total =
+## the modules (all green, 196/196 tests; 09-07 hardening: 24 fixes total =
 14 audit findings F1-F14 + 9 commander items C1-C9 (C2 never existed, C6
 split a/b) + 1 repair round; corrected 09-07 night, the old line
-presented the 24 as one audit count)
+presented the 24 as one audit count; 09-08: real-data era modules RD01-RD08
+added, table re-derived from disk)
 
 | # | module | what it does | gate | commit |
 |---|--------|--------------|------|--------|
@@ -63,6 +69,10 @@ presented the 24 as one audit count)
 | 11 | `pds4label.py` | PDS4 XML label parser (dims, dtype, misc refs) for real ISDA products | synthetic-label round-trip: PASS | `10f8e7a` |
 | 12 | `ch2_ingest.py` | product zip ingest: label + binary + browse + misc extraction, memmap strip reader (never materializes) | synthetic-zip round-trip: PASS | `10f8e7a` |
 | 13 | `sun_angles.py` | spm (sun parameter) file parser, generic positional columns | synthetic-spm fixture: PASS | `10f8e7a` |
+| 14 | `geometry.py` | TMC-2 geometry CSV loader: streaming parse, bbox filter, nearest-row window lookup (the REAL georef) | synthetic-CSV round-trip + window: PASS | `f55d09e` |
+| 15 | `realdata.py` | crop-first real-data ingest: streaming zip extraction, float32 crops, crop_pair, geometry-grid georef preference w/ corner-interp fallback stamp | synthetic-zip e2e + RAM-bound: PASS | `6d10d5c` |
+| 16 | `resample.py` | common-GSD resample: area-average, gauss-pyramid, lanczos3, match_shapes_to_min (the cross-res shape gate) | 6 shape/anti-alias tests: PASS | `35eba8a` |
+| 17 | `spice_angles.py` | real SPICE angle extraction: CK attitude via ckgp SCLK, SPK position, sub-solar point, CK-gap provenance | live re-run 09-08: 53.1 deg sun-lon delta, 27.8 deg incidence delta | `2754246` |
 
 Run it yourself:
 
@@ -74,7 +84,7 @@ uv pip install pytest numpy
 .venv/bin/pytest tests/ -q
 ```
 
-Expected: `154 passed`.
+Expected: `196 passed`.
 
 ## architecture: the pipeline spine
 
@@ -108,14 +118,16 @@ milestone-3 wires up.
   flight-data stratum). No unlabeled claims, anywhere.
 - **append-only ledgers**: PROGRESS-LOG rows are append-only; catches are
   recorded in the row itself; nothing is edited retroactively.
-- **known-open items are stated**: the full rotate+scale synthetic-pair
-  gate (MINI-GATE-2) is not yet green, with the diagnosed root cause and two
-  evidence-grounded fix paths in PLAN-MASTER.md. We do not ship a green bar
-  on a red gate.
+- **known-open items are stated**: every gate that is not yet green is
+  listed as open with its root cause. (09-08 status: MINI-GATE-2 is GREEN
+  (s=1.2001 theta=0.2000, rms 0.146 px, suite 196/196); the open items are
+  L4 (IIRS Array_3D ingest, fires when IIRS bytes land) and L5 (masked
+  normalize on real nodata, tickets 2A/2B). We do not ship a green bar
+  on a red gate, and we do not ship a red bar where a green one exists.
 
 ## context: the campaign this belongs to
 
-- full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 319-row canon (09-07 night: was 309 before the r1-r7 + x1-x3 wave rows landed), decomposition into 114 single-topic units, 10-wave relation campaign, factor atlas
+- full research campaign: [sih-2026](https://github.com/harshgounder/sih-2026) (private) - 320-row canon (09-08 recount: 193 DEEP + 65 ADECENT + 49 MINED + 13 SURFACE; was 319/192 before the 09-08 wave landed), decomposition into 114 single-topic units, 10-wave relation campaign, factor atlas
 - build plan of record: `docs/BRIEF-MILESTONE-1-R0-SPINE.md` in that repo
 - monster-hunt + zoo-router architecture: `research/MONSTER-*.md`
 - the "11 units in one day" was made possible by: opencode (coding agent)
