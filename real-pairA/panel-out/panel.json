@@ -1,0 +1,32 @@
+{
+  "n_pairs": 3,
+  "n_valid": 3,
+  "inlier_ratio": 1.0,
+  "rms_px": 0.34702803731393217,
+  "rms_subpx": 0.34702803731393217,
+  "q_hat": Infinity,
+  "ece_proxy": 0.050000000000000044,
+  "coverage_gates": {
+    "accept": 1.0,
+    "abstain": 0.0,
+    "reject": 0.0
+  },
+  "tier_label": 1,
+  "gate_name": "conformal gate on 3 synthetic fixtures",
+  "provenance_str": "ISDA-REAL",
+  "resid_f_size": 3,
+  "n_ties": 3,
+  "occupancy_ratio": 0.046875,
+  "occupied_cells": 3,
+  "coverage_entropy": 0.26416041678685936,
+  "quadrant_ok": false,
+  "nearest_neighbor_cv": 0.5747404958902629,
+  "manifest": "real-pairA/manifest.json",
+  "provenance_meta": {
+    "date": "2026-09-08",
+    "git_sha": "a2e7d7bfb9a3b8396f3c2c3a4bb5976154c9a471",
+    "seed": 13
+  },
+  "provenance": "ISDA-REAL",
+  "chain_seconds": 31.813
+}

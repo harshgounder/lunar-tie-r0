@@ -1,0 +1,17 @@
+LUNAR-TIE M1 pipeline summary
+=============================
+n_pairs:       3
+n_valid:       3
+inlier_ratio:  1.0000
+rms_px:        0.3470
+rms_subpx:     0.3470
+q_hat:         inf
+ece_proxy:     0.0500
+tier_label:    1
+provenance:    ISDA-REAL
+ties:          3
+occupancy:     0.047 (3/64 cells)
+quadrant_ok:   False
+gate_name:     conformal gate on 3 synthetic fixtures
+
+coverage gates (accept/abstain/reject): {'accept': 1.0, 'abstain': 0.0, 'reject': 0.0}
