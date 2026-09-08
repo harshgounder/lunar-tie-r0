@@ -77,8 +77,8 @@ def _parabola(c0, c1, c2):
     return 0.5 * (c0 - c2) / denom
 
 
-def phase_shift(patchA, patchB, upsample=16):
-    """Phase correlation between two patches -> (dx, dy, peak_val).
+def phase_shift(patchA, patchB, upsample=16, max_shift=None):
+    """Phase correlation between two patches -> (dx, dy, peak_val, snr).
 
     Both patches are zero-meaned and Hann windowed, then the cross-power
     spectrum F_A * conj(F_B) / |.| is formed. The correlation is upsampled by
@@ -86,6 +86,14 @@ def phase_shift(patchA, patchB, upsample=16):
     located, and a quadratic parabola fit around the peak in the upsampled
     grid gives the sub-pixel dx, dy. peak_val is the normalized peak height in
     [0, 1] and serves as a confidence proxy.
+
+    TICKET-RD06 (audit A3+A4): max_shift restricts the argmax search to
+    a [-max_shift, +max_shift] window around the surface center (the
+    shift is small after consensus; lobes outside that window are
+    aliases, not signal). snr = peak / median(corr_surface): a correct
+    phase correlation has snr >> 5; an alias or noise floor has snr
+    ~ 1-2. snr is shift-invariant (unlike peak_val which normalizes by
+    the zero-shift response).
     """
     a = np.asarray(patchA, dtype=np.float64)
     b = np.asarray(patchB, dtype=np.float64)
@@ -112,7 +120,12 @@ def phase_shift(patchA, patchB, upsample=16):
     r_pad = np.fft.ifftshift(r_pad)
     corr = np.fft.ifft2(r_pad).real
 
+    # TICKET-RD06: the phase-corr peak for a shifted image wraps around the
+    # FFT boundary: the peak is near the EDGES of the corr surface, not the
+    # center. the max_shift check must be applied AFTER the unwrapping (the
+    # dx/dy computation), not as a window on the argmax.
     py, px = np.unravel_index(np.argmax(corr), corr.shape)
+
     y0 = max(py - 1, 0)
     y1 = min(py + 1, up_h - 1)
     x0 = max(px - 1, 0)
@@ -127,7 +140,10 @@ def phase_shift(patchA, patchB, upsample=16):
     if dy > h / 2.0:
         dy -= h
     peak_val = float(min(max(corr[py, px] * upsample * upsample, 0.0), 1.0))
-    return float(dx), float(dy), peak_val
+    # TICKET-RD06: surface SNR (shift-invariant confidence)
+    med = float(np.median(corr))
+    snr = float(corr[py, px] / med) if abs(med) > 1e-12 else 0.0
+    return float(dx), float(dy), peak_val, snr
 
 
 def refine_matches(imgA, imgB, src_pts, dst_pts, half=16, upsample=16,
@@ -155,6 +171,7 @@ def refine_matches(imgA, imgB, src_pts, dst_pts, half=16, upsample=16,
     refined_dst = dst.copy()
     deltas = np.zeros((n, 2), dtype=np.float64)
     peak_vals = np.zeros(n, dtype=np.float64)
+    snrs = np.zeros(n, dtype=np.float64)
     valid = np.zeros(n, dtype=bool)
     for i in range(n):
         x, y = dst[i]
@@ -162,17 +179,22 @@ def refine_matches(imgA, imgB, src_pts, dst_pts, half=16, upsample=16,
             continue
         patchA = extract_patch(imgA, src[i, 0], src[i, 1], half)
         patchB = extract_patch(imgB, x, y, half)
-        dx, dy, pv = phase_shift(patchA, patchB, upsample)
+        dx, dy, pv, snr = phase_shift(patchA, patchB, upsample,
+                                      max_shift=max_phase)
         deltas[i] = (dx, dy)
         peak_vals[i] = pv
+        snrs[i] = snr
         refined_dst[i] = (x + dx, y + dy)
-        if abs(dx) <= max_phase and abs(dy) <= max_phase and pv >= 0.2:
+        # TICKET-RD06: SNR gate replaces the peak_val >= 0.2 gate
+        # (peak_val collapses with shift: pv(4,4)=0.087 for a CORRECT match)
+        if abs(dx) <= max_phase and abs(dy) <= max_phase and snr >= 5.0:
             valid[i] = True
     return {
         "src": refined_src,
         "dst": refined_dst,
         "deltas": deltas,
         "peak_vals": peak_vals,
+        "snrs": snrs,
         "valid": valid,
     }
 

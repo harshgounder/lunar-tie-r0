@@ -112,8 +112,12 @@ def _make_img_arr(lines=LINES, samples=SAMPLES, seed=SEED, rocks=True):
     return np.clip(img, 0, 65535).astype("<u2")
 
 
-def _product_zip(tmp_path, name="demo_product.zip", img=None,
-                 lines=LINES, samples=SAMPLES, seed=SEED):
+def _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_1_c.zip",
+                 img=None, lines=LINES, samples=SAMPLES, seed=SEED,
+                 geometry_csv=None):
+    """Synthetic product zip. The default zip NAME carries the real Table 9
+    product-ID grammar (RD07 parses the strip timestamp from the basename):
+    ch2_<inst>_<mtc>_<timestamp>_<p>_<prd>_<stn>.zip."""
     zpath = str(tmp_path / name)
     if img is None:
         img = _make_img_arr(lines=lines, samples=samples, seed=seed)
@@ -122,6 +126,11 @@ def _product_zip(tmp_path, name="demo_product.zip", img=None,
         zf.writestr("ch2_tmc_f_20260901T0000000000_1_c.xml", _label_xml(lines, samples))
         zf.writestr("ch2_tmc_f_20260901T0000000000_1_c.png", b"\x89PNG fake")
         zf.writestr("ch2_tmc_spm_20260901T0000000000_1_c.000", b"1 2 3\n")
+        if geometry_csv is not None:
+            zf.writestr(
+                "geometry/calibrated/20260901/"
+                "ch2_tmc_f_20260901T0000000000_1_c_g_grd_d18.csv",
+                geometry_csv)
     return zpath
 
 
@@ -350,8 +359,8 @@ def test_region_window_accepts_corners_dict():
 # ---------------------------------------------------------------------------
 
 def test_crop_pair_same_window_manifest(tmp_path):
-    za = _product_zip(tmp_path, name="pair_a.zip")
-    zb = _product_zip(tmp_path, name="pair_b.zip", seed=SEED + 1)
+    za = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_1_a.zip")
+    zb = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_1_b.zip", seed=SEED + 1)
     manifest = crop_pair(za, zb, (12.0, 14.0, 20.0, 23.0),
                          out_dir=tmp_path / "crops")
     arrA = np.load(manifest["a"], mmap_mode="r")
@@ -367,8 +376,8 @@ def test_crop_pair_same_window_manifest(tmp_path):
 
 def test_crop_pair_manifest_round_trips_run_pair(tmp_path):
     """The manifest crop_pair writes must satisfy run_pair's loader."""
-    za = _product_zip(tmp_path, name="pair_a.zip")
-    zb = _product_zip(tmp_path, name="pair_b.zip", seed=SEED + 1)
+    za = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_1_a.zip")
+    zb = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_1_b.zip", seed=SEED + 1)
     manifest = crop_pair(za, zb, (12.0, 14.0, 20.0, 23.0),
                          out_dir=tmp_path / "crops")
     m_path = tmp_path / "manifest.json"
@@ -387,8 +396,8 @@ def test_crop_pair_to_run_pair_end_to_end(tmp_path):
     """THE gate: crop both synthetic sides, run the 10-step chain, panel.json."""
     from lunar_tie.pipeline import run_pair
 
-    za = _product_zip(tmp_path, name="pair_a.zip")
-    zb = _product_zip(tmp_path, name="pair_b.zip", seed=SEED + 1)
+    za = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_1_a.zip")
+    zb = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_1_b.zip", seed=SEED + 1)
     manifest = crop_pair(za, zb, (12.0, 14.0, 20.0, 23.0),
                          out_dir=tmp_path / "crops")
     m_path = tmp_path / "manifest.json"
@@ -399,4 +408,106 @@ def test_crop_pair_to_run_pair_end_to_end(tmp_path):
     assert (outdir / "ties.json").is_file()
     assert panel["provenance"] == "ISDA-REAL"
     assert panel["tier_label"] == 0
+
+
+# ---------------------------------------------------------------------------
+# TICKET-RD07: geometry-grid georef preference (audit L3)
+# ---------------------------------------------------------------------------
+
+def _geometry_csv_text(rows):
+    """A geometry_calibrated CSV with the REAL header grammar."""
+    out = ["lon,lat,scan,pix"]
+    for lon, lat, scan, pix in rows:
+        out.append("%s,%s,%s,%s" % (lon, lat, scan, pix))
+    return "\n".join(out) + "\n"
+
+
+def _grid_rows_rotated(lines=LINES, samples=SAMPLES, lat_top=14.0, lat_bot=10.0,
+                       lon_left=20.0, lon_right=26.0):
+    """NON-axis-aligned footprint rows: latitude twists linearly along the
+    top edge (limb shear), so corner min/max and true grid rows disagree.
+
+    scan = line, pix = sample. Row r line l runs
+    lon = lon_left + lon_span * (x + 0.10 * y) and
+    lat = lat_top - lat_span * y, with x = pix/(samples-1),
+    y = scan/(lines-1), both in [0, 1]. The +0.10 skew tilts the footprint
+    so a bbox corner falls OUTSIDE the true quad while still inside the
+    corner min/max box.
+    """
+    rows = []
+    lon_span = lon_right - lon_left
+    lat_span = lat_top - lat_bot
+    for scan in range(lines):
+        y = scan / (lines - 1)
+        lat = lat_top - lat_span * y
+        for pix in range(samples):
+            x = pix / (samples - 1)
+            lon = lon_left + lon_span * (x + 0.10 * y)
+            rows.append((lon, lat, scan, pix))
+    return rows
+
+
+def test_crop_pair_grid_path(tmp_path):
+    """RD07 gate 1: zip WITH a geometry CSV stamps georef=geometry-grid and
+    the window comes from the grid, not the corners."""
+    za = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_1_a.zip",
+                      geometry_csv=_geometry_csv_text(_grid_rows_rotated()))
+    zb = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_1_b.zip", seed=SEED + 1,
+                      geometry_csv=_geometry_csv_text(_grid_rows_rotated()))
+    manifest = crop_pair(za, zb, (12.0, 14.0, 20.0, 23.0),
+                         out_dir=tmp_path / "crops")
+    assert manifest["georef"] == "geometry-grid"
+    w = manifest["window"]
+    assert w["georef"] == "geometry-grid"
+    strip_a = w["strip"]["a"]
+    strip_b = w["strip"]["b"]
+    for line0, line1, sample0, sample1 in (strip_a, strip_b):
+        assert 0 <= line0 < line1 <= LINES
+        assert 0 <= sample0 < sample1 <= SAMPLES
+    arrA = np.load(manifest["a"], mmap_mode="r")
+    arrB = np.load(manifest["b"], mmap_mode="r")
+    assert arrA.shape == (strip_a[1] - strip_a[0], strip_a[3] - strip_a[2])
+    assert arrB.shape == (strip_b[1] - strip_b[0], strip_b[3] - strip_b[2])
+    del arrA
+    del arrB
+
+
+def test_crop_pair_corner_fallback(tmp_path):
+    """RD07 gate 2: zip WITHOUT a geometry CSV stamps georef=corner-interp-v0."""
+    za = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_2_a.zip")
+    zb = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_2_b.zip", seed=SEED + 1)
+    manifest = crop_pair(za, zb, (12.0, 14.0, 20.0, 23.0),
+                         out_dir=tmp_path / "crops")
+    assert manifest["georef"] == "corner-interp-v0"
+    w = manifest["window"]
+    assert w["georef"] == "corner-interp-v0"
+    arrA = np.load(manifest["a"], mmap_mode="r")
+    arrB = np.load(manifest["b"], mmap_mode="r")
+    assert arrA.shape == arrB.shape
+    del arrA
+    del arrB
+
+
+def test_grid_vs_corner_differ(tmp_path):
+    """RD07 gate 3: on a non-axis-aligned footprint the two georef methods
+    produce DIFFERENT windows (the fix matters)."""
+    geometry_csv = _geometry_csv_text(_grid_rows_rotated())
+    za = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_3_a.zip", geometry_csv=geometry_csv)
+    zb = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_3_b.zip", seed=SEED + 1,
+                      geometry_csv=geometry_csv)
+    m_grid = crop_pair(za, zb, (12.0, 14.0, 20.0, 23.0),
+                       out_dir=tmp_path / "grid")
+    assert m_grid["georef"] == "geometry-grid"
+    # the corner path: same strip, NO geometry CSV next to it
+    za_corner = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_4_a.zip")
+    zb_corner = _product_zip(tmp_path, name="ch2_tmc_f_20260901T0000000000_4_b.zip", seed=SEED + 1)
+    m_corner = crop_pair(za_corner, zb_corner, (12.0, 14.0, 20.0, 23.0),
+                         out_dir=tmp_path / "corner")
+    assert m_corner["georef"] == "corner-interp-v0"
+    g = m_grid["window"]["strip"]["a"]
+    c = m_corner["window"]["strip"]["a"]
+    assert list(g) != list(c)
+    # the twist means the grid window is strictly different, not a rounding
+    # artifact: at least one bound moves by many pixels
+    assert max(abs(g[i] - c[i]) for i in range(4)) >= 4
 

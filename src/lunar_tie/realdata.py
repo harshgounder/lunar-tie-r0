@@ -25,9 +25,15 @@ from pathlib import Path
 import numpy as np
 
 from . import ch2_ingest
+from . import geometry
 
 # streaming chunk for zf.open + copyfileobj (4 MB per the ticket)
 _EXTRACT_CHUNK = 4 * 1024 * 1024
+
+# TICKET-RD07 geometry-grid preference: +/- line margin around the grid
+# center (ticket default 1000 lines); samples span the full strip width,
+# so the default window is 2001 lines x full samples around the anchor.
+_GRID_LINE_MARGIN = 1000
 
 
 def extract_product(zip_path, dest_dir, member_kind="img"):
@@ -206,26 +212,101 @@ def _label_corners_from_zip(zip_path):
     return ch2_ingest.ingest_product(str(zip_path))
 
 
+def _product_timestamp(zip_path, label):
+    """Strip timestamp from the product ID (zip basename stem).
+
+    Real grammar (ch2_ingest docstring, user guide Table 9):
+      ch2_<inst>_<mtc>_<YYYYMMDDTHHMMSSssss>_<p>_<prd>_<stn>.<ext>
+    The timestamp is token 4 of the '_' split. Falls back to the label's
+    logical_identifier when the zip name is missing or malformed; raises
+    loudly when neither carries a parseable timestamp token.
+    """
+    candidates = []
+    zip_name = os.path.basename(str(zip_path))
+    stem = zip_name.rsplit(".", 1)[0]
+    candidates.append(stem)
+    lid = label.get("logical_identifier")
+    if lid:
+        candidates.append(str(lid))
+    for candidate in candidates:
+        tokens = candidate.replace(".", "_").split("_")
+        for token in tokens:
+            if len(token) >= 15 and token[:8].isdigit() and token[8] == "T" \
+                    and token[9:15].isdigit():
+                return token
+    raise ValueError(
+        "no product timestamp token in zip name or logical_identifier: %s"
+        % zip_path)
+
+
+def _window_from_grid(zip_path, label, lat0, lat1, lon0, lon1):
+    """RD07 geometry-grid path: (line0, line1, sample0, sample1) from the
+    per-product geometry CSV inside the zip.
+
+    1. find_geometry_csv(zip, timestamp) using the product-ID timestamp.
+    2. load_geometry_grid(csv, bbox=window) then
+       window_from_geometry(grid, ...) -> (scan, pix) at the window center.
+    3. scan a +/- margin (1000 lines x full samples) around that center
+       to get the window.
+
+    Returns None when no CSV ships in the zip (caller falls back to the
+    corner path); raises loudly when a CSV exists but cannot georeference
+    the window (NEVER silently falls back to corners when a grid exists).
+    """
+    timestamp = _product_timestamp(zip_path, label)
+    csv_path = geometry.find_geometry_csv(zip_path, timestamp)
+    if csv_path is None:
+        return None
+    lines = label.get("lines")
+    samples = label.get("samples")
+    if not lines or not samples:
+        raise ValueError(
+            "label lacks Line/Sample dims; cannot build a geometry window")
+    bbox = (lat0, lat1, lon0, lon1)
+    grid = geometry.load_geometry_grid(str(csv_path), bbox=bbox)
+    line0, sample0 = geometry.window_from_geometry(
+        grid, lat0, lat1, lon0, lon1)
+    line1 = min(int(lines), line0 + 1 + _GRID_LINE_MARGIN)
+    line0 = max(0, line0 - _GRID_LINE_MARGIN)
+    return (int(line0), int(line1), 0, int(samples))
+
+
 def crop_pair(zip_a, zip_b, window, out_dir):
     """Crop BOTH sides of a pair to the SAME lat/lon window.
 
     window = (lat0, lat1, lon0, lon1). Each side's (line, sample) window
-    is derived from its own label corners via region_window, sliced off
-    its memmap, and written as float32 .npy. Returns a run_pair-ready
-    manifest dict:
+    comes from its own per-product geometry CSV when the zip ships one
+    (RD07: the grid path is strictly better; the CSVs are always there in
+    real products): the grid row nearest the window center anchors a
+    +/- 1000-line x full-samples scan, stamped manifest["georef"] =
+    "geometry-grid". When NO CSV exists the v0 corner linear interp
+    (region_window) is the fallback, stamped manifest["georef"] =
+    "corner-interp-v0"; the corner path is NEVER used silently when a
+    grid exists. Slices are cut off each memmap and written as float32
+    .npy. Returns a run_pair-ready manifest dict:
       {'a': path_a_npy, 'b': path_b_npy,
-       'tier_label': 0, 'provenance': 'ISDA-REAL'}
+       'tier_label': 0, 'provenance': 'ISDA-REAL', 'georef': stamp,
+       'window': {..., 'georef': stamp}}
     """
     lat0, lat1, lon0, lon1 = window
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = {}
+    georef_by_side = {}
     for key, zip_path in (("a", zip_a), ("b", zip_b)):
         info = _label_corners_from_zip(zip_path)
         label = info["label"]
-        line0, line1, sample0, sample1 = region_window(
-            label, lat0, lat1, lon0, lon1)
+        window_bounds = _window_from_grid(zip_path, label,
+                                          lat0, lat1, lon0, lon1)
+        if window_bounds is not None:
+            georef = "geometry-grid"
+        else:
+            georef = "corner-interp-v0"
+            window_bounds = region_window(
+                label, lat0, lat1, lon0, lon1)
+        georef_by_side[key] = georef
+        line0, line1, sample0, sample1 = window_bounds
         img_member = info["offsets"]["img"]
         if img_member is None:
             raise ValueError("product zip lacks an .img member: %s" % zip_path)
@@ -244,11 +325,18 @@ def crop_pair(zip_a, zip_b, window, out_dir):
         manifest[key] = str(side_path)
         manifest.setdefault("tier_label", 0)
         manifest.setdefault("provenance", "ISDA-REAL")
-        manifest["window"] = {
+        manifest.setdefault("window", {
             "lat0": lat0, "lat1": lat1, "lon0": lon0, "lon1": lon1,
             "zip": {"a": str(zip_a), "b": str(zip_b)},
-            "strip": {key: [line0, line1, sample0, sample1]},
-        }
+            "strip": {},
+        })
+        manifest["window"]["strip"][key] = [line0, line1, sample0, sample1]
     if not manifest.get("a") or not manifest.get("b"):
         raise ValueError("crop_pair produced an incomplete manifest")
+    # one georef stamp for the pair; a sides-disagree pair is stamped
+    # "mixed" (honest, never silently uniform)
+    stamps = set(georef_by_side.values())
+    stamp = stamps.pop() if len(stamps) == 1 else "mixed"
+    manifest["georef"] = stamp
+    manifest["window"]["georef"] = stamp
     return manifest

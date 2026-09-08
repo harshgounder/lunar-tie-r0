@@ -128,7 +128,7 @@ def test_bilinear_sample_clamp():
 def test_phase_shift_identity_zero():
     img = _synthetic(seed=11)
     p = extract_patch(img, 60.0, 60.0, half=16)
-    dx, dy, pv = phase_shift(p, p, upsample=16)
+    dx, dy, pv, snr = phase_shift(p, p, upsample=16)
     assert abs(dx) < 0.1
     assert abs(dy) < 0.1
     assert pv >= 0.9
@@ -138,7 +138,7 @@ def test_phase_shift_known_shift():
     img = _synthetic(seed=12)
     pA = extract_patch(img, 60.0, 60.0, half=16)
     pB = extract_patch(_shift(img, 1.5, -0.5), 60.0, 60.0, half=16)
-    dx, dy, pv = phase_shift(pA, pB, upsample=16)
+    dx, dy, pv, snr = phase_shift(pA, pB, upsample=16)
     assert abs(dx - 1.5) < 0.2
     assert abs(dy - (-0.5)) < 0.2
     assert pv >= 0.5
@@ -160,7 +160,7 @@ def test_refine_matches_returns_contract():
     src = np.array([[60.0, 60.0], [70.0, 70.0]])
     dst = src.copy()
     out = refine_matches(imgA, imgB, src, dst, half=16)
-    assert set(out.keys()) == {"src", "dst", "deltas", "peak_vals", "valid"}
+    assert set(out.keys()) == {"src", "dst", "deltas", "peak_vals", "snrs", "valid"}
     assert out["deltas"].shape == (2, 2)
     assert out["peak_vals"].shape == (2,)
     assert out["valid"].shape == (2,)
