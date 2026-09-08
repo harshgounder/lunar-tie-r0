@@ -122,7 +122,15 @@ def parse_label(xml_path):
 
     # array characteristics: lines/samples + data type
     for ac in _find_all_local(root, "Array_2D_Image") + _find_all_local(root, "Array_2D"):
-        out["data_type"] = _child_text(ac, "data_type") or out["data_type"]
+        dt = _child_text(ac, "data_type")
+        if dt is None:
+            # real ISDA labels nest data_type one level deeper, under
+            # Element_Array (TICKET-RD03); direct-child check stays first
+            # for fixture/label compat.
+            ea = _find_all_local(ac, "Element_Array")
+            if ea:
+                dt = _child_text(ea[0], "data_type")
+        out["data_type"] = dt or out["data_type"]
         for aa in _find_all_local(ac, "Axis_Array"):
             parsed = _parse_axis_array(aa)
             if parsed["axis_name"] == "Line":

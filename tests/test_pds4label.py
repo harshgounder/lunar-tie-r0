@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -44,3 +45,85 @@ def test_logical_identifier(label):
 
 def test_no_corners_present_is_empty_dict(label):
     assert label["corners"] == {}
+
+
+# TICKET-RD03: real ISDA labels nest data_type under Element_Array
+# (Array_2D_Image > Element_Array > data_type), the parser must find it.
+
+_REAL_OHRC_LABEL = """<?xml version="1.0" encoding="UTF-8"?>
+<Product_Observational xmlns="http://pds.nasa.gov/pds4/pds/v1">
+  <File_Area_Observational>
+    <Array_2D_Image>
+      <offset unit="byte">0</offset>
+      <axes>2</axes>
+      <axis_index_order>Last Index Fastest</axis_index_order>
+      <Element_Array>
+        <data_type>UnsignedByte</data_type>
+      </Element_Array>
+      <Axis_Array>
+        <axis_name>Line</axis_name>
+        <elements>79796</elements>
+      </Axis_Array>
+      <Axis_Array>
+        <axis_name>Sample</axis_name>
+        <elements>12000</elements>
+      </Axis_Array>
+    </Array_2D_Image>
+  </File_Area_Observational>
+</Product_Observational>
+"""
+
+_REAL_TMC_LABEL = """<?xml version="1.0" encoding="UTF-8"?>
+<Product_Observational xmlns="http://pds.nasa.gov/pds4/pds/v1">
+  <File_Area_Observational>
+    <Array_2D_Image>
+      <Element_Array>
+        <data_type>UnsignedLSB2</data_type>
+      </Element_Array>
+      <Axis_Array>
+        <axis_name>Line</axis_name>
+        <elements>100</elements>
+      </Axis_Array>
+      <Axis_Array>
+        <axis_name>Sample</axis_name>
+        <elements>50</elements>
+      </Axis_Array>
+    </Array_2D_Image>
+  </File_Area_Observational>
+</Product_Observational>
+"""
+
+
+def _parse_xml_str(xml_text):
+    with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".xml", delete=False, encoding="utf-8") as tmp:
+        tmp.write(xml_text)
+        path = tmp.name
+    try:
+        return parse_label(path)
+    finally:
+        os.unlink(path)
+
+
+def test_real_label_element_array_nesting():
+    out = _parse_xml_str(_REAL_OHRC_LABEL)
+    assert out["data_type"] == "UnsignedByte"
+    assert out["dtype"] == "u1"
+    assert out["lines"] == 79796
+    assert out["samples"] == 12000
+
+
+def test_direct_child_still_works():
+    out = _parse_xml_str(
+        '<?xml version="1.0"?>\n<Product_Observational'
+        ' xmlns="http://pds.nasa.gov/pds4/pds/v1">\n'
+        "  <Array_2D_Image><data_type>UnsignedByte</data_type>"
+        "</Array_2D_Image>\n</Product_Observational>\n")
+    assert out["data_type"] == "UnsignedByte"
+    assert out["dtype"] == "u1"
+
+
+def test_unsignedshort_maps_u2():
+    out = _parse_xml_str(_REAL_TMC_LABEL)
+    assert out["data_type"] == "UnsignedLSB2"
+    assert out["dtype"] == "u2"
